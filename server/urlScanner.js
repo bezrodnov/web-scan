@@ -6,9 +6,9 @@ const logger = require('./logger');
  * JS, CSS, images and references to other pages in the same domain
  * @param {String} url page URL
  * @param {*} browser Puppeteer Browser object
- * @return dependencies object
+ * @return {Object} object with dependencies and some additional fields // TODO: update docs
  */
-const scan = async (url, browser) => {
+const scan = async (url, origin, browser) => {
   const page = await browser.newPage();
 
   page.on('console', msg => logger.info(msg.text()));
@@ -18,17 +18,10 @@ const scan = async (url, browser) => {
       // Extracting functions from evaluated code seems hard or even impossible.
       // That's why function is so long and might be hard to read...
       // TODO: find a way to refactor code in Pupetter.Page.evaluate
-      const scanResult = await page.evaluate((url) => {
-        const dependencies = {
-          currentURL: document.location.href,
-          origin: document.location.origin,
-          urls: [],
-          externalUrls: [],
-          css: [],
-          scripts: [],
-          images: [],
-          icons: []
-        };
+      const scanResult = await page.evaluate(origin => {
+        if (origin && origin !== document.location.origin) {
+          return false;
+        }
 
         const forEachElementWithTag = (tagName, callback) => {
           const elements = document.getElementsByTagName(tagName);
@@ -37,9 +30,11 @@ const scan = async (url, browser) => {
           }
         }
 
-        const addIfNotExists = (arr, element) => {
-          if (element && !arr.includes(element)) {
-            arr.push(element);
+        const dependencies = {};
+        const addDependency = (type, dependency) => {
+          dependencies[type] = dependencies[type] || [];
+          if (dependency && !dependencies[type].includes(dependency)) {
+            dependencies[type].push(dependency);
           }
         };
 
@@ -47,9 +42,9 @@ const scan = async (url, browser) => {
           const ref = anchor.getAttribute('href');
           if (ref && !ref.startsWith('#') && !ref.startsWith('javascript:')) {
             if (anchor.hostname === document.location.hostname) {
-              addIfNotExists(dependencies.urls, ref);
+              addDependency('urls', ref);
             } else {
-              addIfNotExists(dependencies.externalUrls, ref);
+              addDependency('externalUrls', ref);
             }
           }
         });
@@ -59,32 +54,36 @@ const scan = async (url, browser) => {
           const ref = link.getAttribute('href');
 
           if (rel === 'stylesheet') {
-            addIfNotExists(dependencies.css, ref);
+            addDependency('css', ref);
           } else if (rel.startsWith('image')) {
-            addIfNotExists(dependencies.images, ref);
+            addDependency('images', ref);
           } else if (rel.indexOf('icon') >= 0) {
-            addIfNotExists(dependencies.icons, ref);
+            addDependency('icons', ref);
           }
         });
 
-        forEachElementWithTag('link', image => addIfNotExists(dependencies.images, image.getAttribute('src')));
+        forEachElementWithTag('link', image => addDependency('images', image.getAttribute('src')));
 
-        forEachElementWithTag('script', script => addIfNotExists(dependencies.scripts, script.getAttribute('src')));
+        forEachElementWithTag('script', script => addDependency('scripts', script.getAttribute('src')));
 
-        return dependencies;
-      }, url);
+        return {
+          dependencies,
+          href: document.location.href,
+          origin: document.location.origin
+        };
+      }, origin);
 
       await page.close();
 
       resolve(scanResult);
     });
 
-    logger.debug(`opening page: ${url}`)
+    logger.debug(`opening page: ${url}`);
     page.goto(url).catch(reject);
   });
 }
 
-const sanitizeURL = url => url.endsWith('/')
+const removeTrailingSlash = url => url.endsWith('/')
   ? url.substring(0, url.length - 1)
   : url;
 
@@ -96,41 +95,51 @@ const sanitizeURL = url => url.endsWith('/')
  */
 module.exports = async url => {
   const browser = await puppeteer.launch({headless: true});
-  // keep visited nodes in hashmap
+  // keep registered nodes in hash
   const nodes = {};
   const scannedTree = {};
+  let origin;
 
   const scanQueue = [{ parentNode: null, url }];
   while (scanQueue.length > 0) {
     const { parentNode, url } = scanQueue.pop();
-    if (nodes[url]) {
-      // already scanned
-      continue;
-    }
+    let scanResult;
     try {
-      const node = await scan(url, browser);
+      scanResult = await scan(url, origin, browser);
+    } catch(error) {
+      nodes[url] = { failed: true, error };
+      logger.error(`failed to scan url ${url}`)
+    }
+
+    if (scanResult) {
+      if (!origin) {
+        origin = scanResult.origin;
+      }
+
+      const node = scanResult.dependencies;
       nodes[url] = node;
-      // actual page url may change in case of redirection
-      nodes[node.currentURL] = node;
+      // actual page url may change in case of redirect
+      nodes[scanResult.href] = node;
 
       if (!parentNode) {
         scannedTree[url] = node;
       } else {
         parentNode.references = parentNode.references || {};
-        parentNode.references[url] = node;
+        parentNode.references[scanResult.href] = node;
       }
 
-      node.urls.forEach(referencedURL => {
-        referencedURL = sanitizeURL(referencedURL);
+      (node.urls || []).forEach(referencedURL => {
+        referencedURL = removeTrailingSlash(referencedURL);
         if (referencedURL.startsWith('/')) {
-          referencedURL = node.origin + referencedURL;
+          referencedURL = origin + referencedURL;
         }
-        if (referencedURL && !nodes[referencedURL]) {
+        if (referencedURL && !nodes.hasOwnProperty(referencedURL)) {
           scanQueue.push({ parentNode: node, url: referencedURL });
+          nodes[referencedURL] = null;
         }
       });
-    } catch(error) {
-      nodes[url] = { failed: true, error };
+    } else {
+      logger.error(`failed to scan url ${url}`)
     }
   }
 
