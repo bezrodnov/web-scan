@@ -1,0 +1,34 @@
+$border-radius: 10px;
+
+.App {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  
+  & > form {
+    text-align: center;
+    font-size: calc(10px + 2vmin);
+    color: white;
+    
+    input {
+      font-size: 14pt;
+      height: 30px;
+      border-radius: $border-radius;
+      padding: 0 10px;
+      outline: none;
+    }
+
+    button.start {
+      font-size: 14pt;
+      margin-left: 20px;
+      border-radius: $border-radius;
+      height: 30px;
+      width: 100px;
+      outline: none;
+      background-color: #79c78d;
+    }
+  }
+}
