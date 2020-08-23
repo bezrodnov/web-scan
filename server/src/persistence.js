@@ -23,5 +23,8 @@ const dependencyNodeSchema = new mongoose.Schema({
 const DependencyNode = mongoose.model('DependencyNode', dependencyNodeSchema);
 
 module.exports = {
-  saveDependencies: (url, dependencies) => new DependencyNode({ url, ...dependencies }).save()
+  saveDependencies: (url, dependencies) => {
+    return new DependencyNode({ url, ...dependencies })
+      .save(logger.error);
+  }
 };

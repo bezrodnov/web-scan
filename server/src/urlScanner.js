@@ -4,6 +4,7 @@
 const puppeteer = require('puppeteer');
 const logger = require('./logger');
 const { Notifier, evenTypes } = require('./notifier'); // TODO: find a way to embedd constants from {eventTypes} to JSDoc
+const UrlRegistry = require('./urlRegistry');
 const { saveDependencies } = require('./persistence');
 
 /**
@@ -127,10 +128,7 @@ module.exports = async (url, progressCallback) => {
   const origin = await resolveOrigin(url, browser);
   logger.debug(`origin has been resolved to "${origin}"`);
 
-  // save urls in hashmap to skip scanning the same url again:
-  // key: url
-  // value: null - if not scanned yet, boolean - whether scan result was successfull
-  const urlRegistry = {};
+  const urlRegistry = new UrlRegistry();
 
   const scanQueue = [url];
   while (scanQueue.length > 0) {
@@ -142,22 +140,25 @@ module.exports = async (url, progressCallback) => {
       scanResult = await scan(url, origin, browser);
     } catch (error) {
       logger.error(error);
-      urlRegistry[url] = false;
+      urlRegistry.register(url, false);
     }
 
     if (scanResult) {
       const { dependencies } = scanResult;
       notifier.done(url, dependencies);
-      urlRegistry[scanResult.href] = urlRegistry[url] = true;
+      saveDependencies(url, dependencies);
+
+      urlRegistry.register(scanResult.href, true);
+      urlRegistry.register(url, true);
 
       (dependencies.urls || []).forEach(referencedURL => {
         referencedURL = removeTrailingSlash(referencedURL);
         if (referencedURL.startsWith('/')) {
           referencedURL = origin + referencedURL;
         }
-        if (referencedURL && !urlRegistry.hasOwnProperty(referencedURL)) {
+        if (urlRegistry.shouldVisit(referencedURL)) {
           scanQueue.push(referencedURL);
-          urlRegistry[referencedURL] = null;
+          urlRegistry.register(referencedURL);
         }
       });
     } else {
