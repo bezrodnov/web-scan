@@ -19,7 +19,7 @@ const scan = async (url, origin, browser) => {
 
   page.on('console', msg => logger.info(msg.text()));
 
-  return await new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     page.once('load', async () => {
       // Extracting functions from evaluated code seems hard or even impossible
       // in Puppeteer (e.g. when they depend on DOM API or have browser scope).

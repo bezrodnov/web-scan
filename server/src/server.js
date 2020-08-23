@@ -24,11 +24,11 @@ router.get('/', cors(), (req, res) => {
 io.on('connection', (socket) => {
   logger.debug('A new socket client connected');
 
-  socket.on('request-scan', async url => {
+  socket.on('request-scan', url => {
     logger.info(`scan request received for url ${url}`);
 
     // TODO: implement a way to stop current scan
-    await urlScanner(url, ({ type, ...payload }) => socket.emit(type, payload));
+    urlScanner(url, ({ type, ...payload }) => socket.emit(type, payload));
   });
 
   socket.on('disconnect', () => {

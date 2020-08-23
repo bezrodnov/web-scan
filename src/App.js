@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef }from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import socketIOClient from 'socket.io-client';
 
 import './App.scss';
@@ -20,7 +20,7 @@ const App = () => {
 
   const handleScanStart = useCallback(e => {
     e.preventDefault();
-    socketRef.current.emit('request-scan', urlRef.current.value);
+    socketRef.current.emit('url-scanned', urlRef.current.value);
   }, []);
 
   return (
