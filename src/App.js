@@ -1,29 +1,27 @@
-import React, { useCallback, useRef }from 'react';
+import React, { useCallback, useEffect, useRef }from 'react';
+import socketIOClient from 'socket.io-client';
+
 import './App.scss';
+
+const ENDPOINT = 'http://127.0.0.1:5000'; // TODO: move to property file
 
 const App = () => {
   const urlRef = useRef();
-  const handleScanStart = useCallback(async e => {
-    e.preventDefault();
-    const url = urlRef.current.value;
-    console.log(`URL: ${url}`);
+  const socketRef = useRef();
 
-    try {
-      const response = await fetch('http://localhost:5000/scanURL', {
-        method: 'POST',
-        body: JSON.stringify({ url })
-      });
+  useEffect(() => {
+    socketRef.current = socketIOClient(ENDPOINT);
+    socketRef.current.on('scan-progress', progress => {
+      console.log(progress);
+    });
 
-      if (response.status === 200) {
-        const scanTree = await response.text();
-        console.log(JSON.parse(scanTree));
-      }
-    }
-    catch(e) {
-      console.log(e);
-    }
+    return () => socketRef.current.disconnect();
   }, []);
 
+  const handleScanStart = useCallback(e => {
+    e.preventDefault();
+    socketRef.current.emit('request-scan', urlRef.current.value);
+  }, []);
 
   return (
     <div className="App">
